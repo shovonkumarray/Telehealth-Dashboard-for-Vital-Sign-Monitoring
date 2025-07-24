@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doctor Vital Sign Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.5/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const DoctorDashboard = () => {
+            const [vitals, setVitals] = useState([]);
+            const spo2ChartRef = useRef(null);
+            const tempChartRef = useRef(null);
+            const hrChartRef = useRef(null);
+            const [alerts, setAlerts] = useState([]);
+
+            useEffect(() => {
+                const fetchVitals = async () => {
+                    try {
+                        const response = await fetch('http://localhost:5000/get_vitals');
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        const data = await response.json();
+                        if (data.error) throw new Error(data.error);
+                        setVitals(data.vitals);
+                        checkAlerts(data.vitals);
+                    } catch (error) {
+                        console.error('Error fetching vitals:', error.message);
+                        alert('Failed to fetch vitals: ' + error.message);
+                    }
+                };
+                fetchVitals();
+                const interval = setInterval(fetchVitals, 5000); // Update every 5 seconds
+                return () => clearInterval(interval);
+            }, []);
+
+            const checkAlerts = (vitalsData) => {
+                const newAlerts = [];
+                vitalsData.forEach(v => {
+                    if (v.spo2 < 90) newAlerts.push(`Alert: Patient ${v.patientId} - Low SpO₂ (${v.spo2}%) at ${v.timestamp}`);
+                    if (v.temp > 38) newAlerts.push(`Alert: Patient ${v.patientId} - High Temp (${v.temp}°C) at ${v.timestamp}`);
+                    if (v.hr > 100 || v.hr < 60) newAlerts.push(`Alert: Patient ${v.patientId} - Abnormal HR (${v.hr} bpm) at ${v.timestamp}`);
+                });
+                setAlerts(newAlerts);
+            };
+
+            useEffect(() => {
+                if (spo2ChartRef.current) spo2ChartRef.current.destroy();
+                if (tempChartRef.current) tempChartRef.current.destroy();
+                if (hrChartRef.current) hrChartRef.current.destroy();
+
+                const times = vitals.map(v => new Date(v.timestamp).toLocaleTimeString());
+                spo2ChartRef.current = new Chart(document.getElementById('spo2Chart'), {
+                    type: 'line',
+                    data: { labels: times, datasets: [{ label: 'SpO₂ (%)', data: vitals.map(v => v.spo2), borderColor: '#3b82f6', tension: 0.1 }] },
+                    options: { responsive: true, scales: { y: { min: 80, max: 100 } } }
+                });
+                tempChartRef.current = new Chart(document.getElementById('tempChart'), {
+                    type: 'line',
+                    data: { labels: times, datasets: [{ label: 'Temp (°C)', data: vitals.map(v => v.temp), borderColor: '#ef4444', tension: 0.1 }] },
+                    options: { responsive: true, scales: { y: { min: 35, max: 40 } } }
+                });
+                hrChartRef.current = new Chart(document.getElementById('hrChart'), {
+                    type: 'line',
+                    data: { labels: times, datasets: [{ label: 'HR (bpm)', data: vitals.map(v => v.hr), borderColor: '#22c55e', tension: 0.1 }] },
+                    options: { responsive: true, scales: { y: { min: 40, max: 120 } } }
+                });
+
+                return () => {
+                    if (spo2ChartRef.current) spo2ChartRef.current.destroy();
+                    if (tempChartRef.current) tempChartRef.current.destroy();
+                    if (hrChartRef.current) hrChartRef.current.destroy();
+                };
+            }, [vitals]);
+
+            return (
+                <div className="container mx-auto p-4">
+                    <h1 className="text-2xl font-bold mb-4">Doctor Vital Sign Dashboard</h1>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                            <h2 className="text-xl font-semibold">SpO₂ Trend</h2>
+                            <canvas id="spo2Chart"></canvas>
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-semibold">Temperature Trend</h2>
+                            <canvas id="tempChart"></canvas>
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-semibold">Heart Rate Trend</h2>
+                            <canvas id="hrChart"></canvas>
+                        </div>
+                    </div>
+                    <div className="mt-4">
+                        <h2 className="text-xl font-semibold mb-2">Alerts</h2>
+                        {alerts.length > 0 ? (
+                            <ul className="list-disc pl-5 text-red-600">
+                                {alerts.map((alert, index) => <li key={index}>{alert}</li>)}
+                            </ul>
+                        ) : (
+                            <p>No alerts at this time.</p>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<DoctorDashboard />, document.getElementById('root'));
+    </script>
+</body>
+</html>
